@@ -1,39 +1,202 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>.ghg / .hgx / .hx2 / .hgp (Game Hierarchical Geometry / Skeletal Model)</title>
+    <title>.ghg / .hgx / .hx2 / .hgp (Game Hierarchical Geometry — LEGO Star Wars)</title>
     <link rel="stylesheet" href="../../../style/main.css">
 </head>
 <body class="doc-page">
     <nav class="breadcrumbs" aria-label="Breadcrumb">
         <a href='../../../index.html#home' target='_parent'>Documentation</a><span>/</span><a href='../../../index.html#Formats-dat' target='_parent'>Formats</a><span>/</span><a href='../../../index.html#Formats-dat' target='_parent'>.dat</a><span>/</span>.ghg
     </nav>
-    <h1>.ghg / .hgx / .hx2 / .hgp (Game Hierarchical Geometry / Skeletal Model)</h1>
-<aside class="source-notice"><p><strong>Category:</strong> Characters & Models · <strong>Scope:</strong> Universal (All TT Engine Generations 2005–2024; .hgx in LSW1 Xbox, .hx2 in LSW2 Xbox, .hgp in LSW1 PC/GCN)</p></aside>
+    <h1>.ghg / .hgx / .hx2 / .hgp (Game Hierarchical Geometry — LEGO Star Wars)</h1>
+<aside class="source-notice"><p><strong>Game Scope:</strong> <em>LEGO Star Wars: The Video Game</em> (2005), <em>LSW2</em> (2006), &amp; <em>The Complete Saga</em> (2007) · <strong>Format Variant:</strong> Classic <code>NU20</code> (<code>v0x25..0x40</code>). For later Next-Gen <code>HSEM</code> variants in other TT Games titles, see the parent LEGO documentation.</p></aside>
 <section class="format-summary">
-    <p class="eyebrow">Format Specification · TT Games Engine</p>
-    <p>Skeletal character, minifigure, creature, and vehicle mesh container storing bone hierarchies, inverse bind matrices, skinning weights, LODs, and embedded or referenced textures.</p>
+    <p class="eyebrow">Game-Scoped Specification · Classic Nu2 Engine</p>
+    <p>Complete, standalone specification for skeletal character, minifigure, creature, and vehicle models in Classic <em>LEGO Star Wars</em> releases (<code>688</code> inspected <code>_PC.GHG</code> files in <em>TCS</em>: <code>682</code> geometry models, <code>6</code> empty locator rigs; <code>163</code> <code>.hgx</code> in <em>LSW1</em> Xbox; <code>255</code>/<code>261</code>/<code>254</code> in <em>LSW2</em>). Embedded GPU buffers precede an internal <code>NU20</code> / <code>GSNH</code> skeleton chunk.</p>
     <dl>
-        <dt>File Extension</dt><dd><code>.ghg</code></dd>
-        <dt>Header Signature / Magic</dt><dd><code>NU20 (0x3032554E) / .CC4+HSER+02UN</code></dd>
-        <dt>Subsystem</dt><dd>Characters & Models</dd>
-        <dt>Cross-Game Scope</dt><dd>Universal (All TT Engine Generations 2005–2024; .hgx in LSW1 Xbox, .hx2 in LSW2 Xbox, .hgp in LSW1 PC/GCN)</dd>
+        <dt>Extensions</dt><dd><code>.ghg</code> (PS2/PS3/X360/PC), <code>.hgx</code> (LSW1 Xbox), <code>.hx2</code> (LSW2 Xbox), <code>.hgp</code> (LSW1 PC/GCN)</dd>
+        <dt>Header Signature</dt><dd><code>uint32le nu20_rel</code> + <code>uint16le n_tex</code> -> <code>"NU20"</code> (<code>0x3032554E</code>) at <code>nu20_rel + 4</code></dd>
+        <dt>PS2 Note</dt><dd>PS2 releases may wrap the entire file in <code>RNC\x02</code> compression; decompress before parsing.</dd>
     </dl>
 </section>
-<h2>Overview &amp; Platform Variants</h2>
-<p><code>.ghg</code> (Game Hierarchical Geometry) defines articulated characters, minifigures, creatures, and multi-part props:</p>
+
+<h2>1. Pre-<code>NU20</code> GPU Texture &amp; Buffer Stream (<code>0x00 .. nu_off</code>)</h2>
+<div class="table-scroll"><table class="format-counts">
+<thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Field</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>0x00</code></td><td>4</td><td><code>uint32le</code></td><td><code>nu20_rel</code></td><td>Byte offset relative to <code>0x04</code> locating the <code>"NU20"</code> chunk (<code>nu_off = nu20_rel + 4</code>).</td></tr>
+<tr><td><code>0x04</code></td><td>2</td><td><code>uint16le</code></td><td><code>n_tex</code></td><td>Logical texture count stored inline before the vertex buffers.</td></tr>
+<tr><td><code>0x06</code></td><td>var</td><td><code>TexBlock[]</code></td><td><code>Textures</code></td><td>Loop while <code>tex_idx &lt; n_tex</code> and <code>pos + 28 &lt;= nu_off</code>: 24-byte header (<code>int32le width_signed</code> at <code>+0x00</code>, <code>uint32le dds_size</code> at <code>+0x14</code>) followed at <code>+0x18</code> by <code>dds_size</code> bytes starting with ASCII <code>"DDS "</code>. Increment <code>tex_idx += 6</code> when <code>width_signed &lt; 0</code> (cubemap), else <code>1</code>; advance <code>pos += 24 + dds_size</code>.</td></tr>
+<tr><td><code>pos</code></td><td>2 + var</td><td><code>VBTable</code></td><td><code>VertexBuffers</code></td><td><code>uint16le n_vb</code> entries of <code>[uint32le vb_size, uint8 vb_bytes[vb_size]]</code>. If <code>n_vb == 0</code>, the file is an empty locator/rig node.</td></tr>
+<tr><td><code>pos</code></td><td>2 + var</td><td><code>IBTable</code></td><td><code>IndexBuffers</code></td><td><code>uint16le n_ib</code> entries of <code>[uint32le ib_size, uint16le raw_ib[ib_size / 2]]</code>.</td></tr>
+</tbody>
+</table></div>
+
+<h2>2. <code>GSNH</code> Skeleton, Rigid Inverse-Bind Matrices &amp; <code>NuLayer</code> Hierarchy</h2>
+<p>Search <code>tail = bytes[nu_off .. EOF]</code> for <code>"GSNH"</code>. Signed <code>int32le</code> pointers inside <code>GSNH</code> resolve relative to the byte address of the pointer field (<code>target = field_addr + int32le(tail, field_addr)</code>):</p>
+<div class="table-scroll"><table class="format-counts">
+<thead><tr><th>Offset from <code>gsnh</code></th><th>Size</th><th>Type</th><th>Field</th><th>Interpretation</th></tr></thead>
+<tbody>
+<tr><td><code>+280</code> (<code>0x118</code>)</td><td>4</td><td><code>int32le</code></td><td><code>r280</code></td><td>Display Header at <code>hdr_off = gsnh + 280 + r280</code>: <code>cmd_base = (hdr_off + 8) + i32(hdr_off + 8)</code>, <code>n_groups = i32(hdr_off + 16)</code>, <code>p_groups = (hdr_off + 20) + i32(hdr_off + 20)</code>.</td></tr>
+<tr><td><code>+368</code> (<code>0x170</code>)</td><td>4</td><td><code>uint32le</code></td><td><code>nbones</code></td><td>Bone count (<code>1..512</code>).</td></tr>
+<tr><td><code>+380</code> (<code>0x17C</code>)</td><td>4</td><td><code>int32le</code></td><td><code>r380</code></td><td><code>m2_ptr = gsnh + 380 + r380</code> points to <code>nbones</code> 64-byte (<code>float32le[16]</code>) row-major inverse-bind matrices <code>m2[b]</code>. Rigid parts attached to bone <code>b</code> must be transformed to bind pose by <code>WorldBind[b] = (m2[b])^-1</code> (<code>R_inv = transpose(R)</code>, <code>t_inv = -p * R_inv</code>).</td></tr>
+<tr><td><code>+408</code> / <code>+412</code></td><td>4 + 4</td><td><code>u32le</code> / <code>i32le</code></td><td><code>n_layers</code> / <code>r412</code></td><td><code>p_layers = gsnh + 412 + r412</code> points to <code>n_layers</code> 20-byte <code>NuLayer</code> records.</td></tr>
+</tbody>
+</table></div>
+
+<h2>3. <code>NuLayer</code> Slots, Display Groups, Commands &amp; Vertex Stride</h2>
 <ul>
-    <li><strong>LSW1 (2005):</strong> <code>.ghg</code> on PS2 (<code>RNC\x02</code> compressed), <code>.hgx</code> on Original Xbox (uncompressed <code>NU20</code> v<code>0x25</code> with inline DXT <code>.dds</code> textures and <code>C:\Perforce\LSW\...</code> paths), and <code>.hgp</code> on PC/GameCube.</li>
-    <li><strong>LSW2 (2006):</strong> <code>.ghg</code> on PS2/Xbox 360/PC and <code>.hx2</code> on Original Xbox (accompanied by debug <code>.hx2.htm</code> Perforce export logs on the Xbox retail disc).</li>
-    <li><strong>NXG &amp; DX11 (HP 1–4, HP 5–7, Batman 2, Dimensions):</strong> Platform-suffixed <code>_nxg.ghg</code> / <code>_dx11.ghg</code> combining an inner <code>NU20</code> hierarchy (<code>HGOL</code> / <code>LOGH</code> layer lists, joints, locators) with GPU vertex/index streams.</li>
+    <li><strong><code>NuLayer</code> (20 B at <code>loff = p_layers + l_idx * 20</code>):</strong> Five <code>int32le</code> offsets <code>(name_rel, r_rel, s_rel, rl_rel, sl_rel)</code>. Skip lowercase layer names containing <code>breakup</code>, <code>medium</code>, <code>medres</code>, <code>_med</code>, <code>low</code>, <code>lores</code>, <code>verylo</code>, <code>_vlo</code>, <code>_lo</code>, <code>c3po</code>, or matching <code>(^|_)tt[234](_|$)</code> (fallback to unfiltered if none survive). Prefer <code>r_rel</code> (+4 rigid bone array of <code>nbones</code> <code>int32le</code> pointers) &amp; <code>s_rel</code> (+8 skinned slot); use <code>rl_rel</code> (+12) &amp; <code>sl_rel</code> (+16) only when both <code>r_rel == 0</code> and <code>s_rel == 0</code>.</li>
+    <li><strong>56 B Draw Descriptor:</strong> <code>desc[0]</code> (<code>4/5</code>=List, <code>6</code>=Strip), <code>desc[1]=tri_cnt</code>, <code>desc[2]&amp;0xFF=stride</code> (<code>24, 28, 32, 36, 40, 44, 48</code>), <code>desc[5]=vbase</code>, <code>desc[6]=vcnt</code>, <code>desc[7]=ioff</code>, <code>desc[8]=ib_idx</code>, <code>desc[9]=vb_idx</code>.</li>
+    <li><strong>Vertex &amp; Winding:</strong> At <code>vi*stride</code>: <code>+0x00 float32le[3]</code> pos; <code>+0x0C uint8[3]</code> unsigned normal <code>(b/127.5 - 1.0)</code> (when <code>stride &gt;= 24</code>); <code>+stride - 8 float32le[2]</code> UV0 (when <code>stride &gt;= 32</code>). Indices are 0-based relative to <code>vbase</code>, CCW-wound (flip to CW for Godot <code>SurfaceTool</code>).</li>
 </ul>
-<h2>Internal Chunks</h2>
-<ul>
-    <li><code>NTBL</code> / <code>LBTN</code>: Null-terminated string table holding joint names (<code>head</code>, <code>neck</code>, <code>torso</code>, <code>arm_L</code>, <code>hand_L</code>, <code>hips</code>, <code>leg_L</code>) and material identifiers.</li>
-    <li><code>TST0</code> / <code>0TST</code>: Texture set table (inline textures in Era 1–2; external <code>.tex</code> / <code>.nxg_textures</code> references in Era 3–4).</li>
-    <li><code>MSH0</code> / <code>0HSM</code>: Skinned mesh primitives and bone weight palette indices.</li>
-</ul>
+
+<h2>4. Complete Self-Contained Pseudocode (<em>LEGO Star Wars</em> <code>.GHG</code>)</h2>
+<pre><code>function InvertRigidMat4x4(m):
+    r_inv = [m[0], m[4], m[8],  m[1], m[5], m[9],  m[2], m[6], m[10]]
+    tx = -(m[12]*m[0] + m[13]*m[1] + m[14]*m[2])
+    ty = -(m[12]*m[4] + m[13]*m[5] + m[14]*m[6])
+    tz = -(m[12]*m[8] + m[13]*m[9] + m[14]*m[10])
+    return (r_inv, [tx, ty, tz])
+
+function DecodeTriangles(raw, vcnt, is_strip, clockwise_target):
+    out = []; n = len(raw)
+    if n &lt; 3 or vcnt &lt; 3: return out
+    if is_strip:
+        for s in 0 .. n - 3:
+            a = raw[s]; b = raw[s+1]; c = raw[s+2]
+            if 0 &lt;= a &lt; vcnt and 0 &lt;= b &lt; vcnt and 0 &lt;= c &lt; vcnt and a != b and b != c and a != c:
+                ccw_even = ((s &amp; 1) == 0)
+                emit_abc = (ccw_even and not clockwise_target) or (not ccw_even and clockwise_target)
+                out.extend((a, b, c) if emit_abc else (a, c, b))
+    else:
+        for i in range(0, n - (n % 3), 3):
+            a = raw[i]; b = raw[i+1]; c = raw[i+2]
+            if 0 &lt;= a &lt; vcnt and 0 &lt;= b &lt; vcnt and 0 &lt;= c &lt; vcnt and a != b and b != c and a != c:
+                out.extend((a, c, b) if clockwise_target else (a, b, c))
+    return out
+
+function ResolveLayerItemGroup(tail, item_ptr, p_groups, n_groups):
+    if item_ptr &lt; 0 or item_ptr + 180 &gt; len(tail): return -1
+    g_off = item_ptr + 176 + ReadI32LE(tail, item_ptr + 176)
+    if g_off &lt; p_groups or ((g_off - p_groups) % 12) != 0: return -1
+    g_idx = (g_off - p_groups) / 12
+    return g_idx if (0 &lt;= g_idx &lt; n_groups) else -1
+
+function ParseLswGhg(bytes, clockwise_target=false):
+    if len(bytes) &lt; 8: return []
+    nu_off = ReadU32LE(bytes, 0x00) + 4
+    if nu_off &lt; 8 or nu_off + 8 &gt; len(bytes) or bytes[nu_off : nu_off+4] != "NU20": return []
+
+    n_tex = ReadU16LE(bytes, 0x04); pos = 0x06; tex_idx = 0
+    while tex_idx &lt; n_tex and pos + 28 &lt;= nu_off:
+        if bytes[pos+24 : pos+28] != "DDS ": break
+        w_signed = ReadI32LE(bytes, pos); dds_size = ReadU32LE(bytes, pos+20)
+        tex_idx += (6 if w_signed &lt; 0 else 1); pos += 24 + dds_size
+
+    n_vb = ReadU16LE(bytes, pos); pos += 2; vbs = []
+    for _ in 0 .. n_vb - 1: sz = ReadU32LE(bytes, pos); pos += 4; vbs.append(bytes[pos : pos+sz]); pos += sz
+    n_ib = ReadU16LE(bytes, pos); pos += 2; ibs = []
+    for _ in 0 .. n_ib - 1: sz = ReadU32LE(bytes, pos); pos += 4; ibs.append(ReadU16LEArray(bytes, pos, sz/2)); pos += sz
+    if len(vbs) == 0 or len(ibs) == 0: return []
+
+    tail = bytes[nu_off : len(bytes)]; gsnh = FindTag(tail, "GSNH")
+    if gsnh &lt; 0 or gsnh + 420 &gt; len(tail): return []
+
+    nbones = ReadU32LE(tail, gsnh + 368); world_binds = []
+    if 0 &lt; nbones &lt;= 512:
+        m2_ptr = gsnh + 380 + ReadI32LE(tail, gsnh + 380)
+        for b in 0 .. nbones - 1:
+            world_binds.append(InvertRigidMat4x4(ReadF32LEArray(tail, m2_ptr + b * 64, 16)))
+
+    r280 = ReadI32LE(tail, gsnh + 280); hdr_off = gsnh + 280 + r280
+    cmd_base = hdr_off + 8  + ReadI32LE(tail, hdr_off + 8)
+    n_groups = ReadI32LE(tail, hdr_off + 16); p_groups = hdr_off + 20 + ReadI32LE(tail, hdr_off + 20)
+    n_layers = ReadU32LE(tail, gsnh + 408); r412 = ReadI32LE(tail, gsnh + 412)
+
+    draw_groups = []
+    if n_layers &gt; 0 and r412 != 0:
+        p_layers = gsnh + 412 + r412
+        for skip_filtered in [true, false]:
+            for l_idx in 0 .. n_layers - 1:
+                loff = p_layers + l_idx * 20
+                name_rel, r_rel, s_rel, rl_rel, sl_rel = ReadI32LEArray(tail, loff, 5)
+                lname = ReadNullTermAscii(tail, loff + name_rel).lower()
+                if skip_filtered and (ContainsAny(lname, ["breakup","medium","medres","_med","low","lores","verylo","_vlo","_lo","c3po"]) or MatchesRegex(lname, "(^|_)tt[234](_|$)")):
+                    continue
+                slots = [(r_rel, 4, true), (s_rel, 8, false)]
+                if r_rel == 0 and s_rel == 0: slots.extend([(rl_rel, 12, true), (sl_rel, 16, false)])
+                for (rel, f_off, is_rigid) in slots:
+                    if rel == 0: continue
+                    if is_rigid:
+                        r_base = loff + f_off + rel
+                        for bi in 0 .. nbones - 1:
+                            br = ReadI32LE(tail, r_base + bi * 4)
+                            if br != 0:
+                                t_ptr = r_base + bi * 4 + br
+                                g_idx = ResolveLayerItemGroup(tail, t_ptr + 8 + ReadI32LE(tail, t_ptr + 8), p_groups, n_groups)
+                                if g_idx &gt;= 0: draw_groups.append((g_idx, bi))
+                    else:
+                        t_ptr = loff + f_off + rel
+                        g_idx = ResolveLayerItemGroup(tail, t_ptr + 8 + ReadI32LE(tail, t_ptr + 8), p_groups, n_groups)
+                        if g_idx &gt;= 0: draw_groups.append((g_idx, null))
+            if len(draw_groups) &gt; 0: break
+    if len(draw_groups) == 0: draw_groups = [(g, null) for g in 0 .. n_groups - 1]
+
+    draw_calls = []; seen_cmds = {}
+    for (g_idx, bone_idx) in draw_groups:
+        goff = p_groups + g_idx * 12; cnt = ReadI32LE(tail, goff); p_cmds = goff + 8 + ReadI32LE(tail, goff + 8)
+        for k in 0 .. cnt - 1:
+            c_idx = ReadI32LE(tail, p_cmds + k * 4)
+            if (c_idx, bone_idx) in seen_cmds: continue
+            c_off = cmd_base + c_idx * 16; t_off = c_off + 4 + ReadI32LE(tail, c_off + 4)
+            desc = ReadI32LEArray(tail, t_off, 14)
+            if desc[0] in [4,5,6] and 0 &lt; desc[1] &lt; 200000 and (desc[2] &amp; 0xFF) in [24,28,32,36,40,44,48]:
+                seen_cmds.add((c_idx, bone_idx)); draw_calls.append((desc, bone_idx))
+    if len(draw_calls) == 0:
+        for off in range(max(0, gsnh - 250000), gsnh, 4):
+            c0, rel, z0, z1 = ReadI32LEArray(tail, off, 4)
+            if c0 == 0x82 and z0 == 0 and z1 == 0 and 0 &lt; rel &lt; 200000:
+                desc = ReadI32LEArray(tail, off + 4 + rel, 14)
+                if desc[0] in [4,5,6] and 0 &lt; desc[1] &lt; 200000: draw_calls.append((desc, null))
+
+    out = []; seen_ranges = {}; seen_bboxes = {}
+    for (desc, bone_idx) in draw_calls:
+        prim_tp = desc[0]; tri_cnt = desc[1]; stride = desc[2] &amp; 0xFF
+        vbase = desc[5]; vcnt = desc[6]; ioff = desc[7]; ib_idx = desc[8]; vb_idx = desc[9]
+        if (vb_idx, vbase, vcnt, ioff, bone_idx) in seen_ranges: continue
+        idx_cnt = (tri_cnt + 2) if prim_tp == 6 else (tri_cnt * 3)
+        if (vbase + vcnt) * stride &gt; len(vbs[vb_idx]) or ioff + idx_cnt &gt; len(ibs[ib_idx]): continue
+
+        R_inv, t_inv = world_binds[bone_idx] if (bone_idx != null and bone_idx &lt; len(world_binds)) else (null, null)
+        positions = []; normals = []; uvs = []
+        for vi in vbase .. vbase + vcnt - 1:
+            vo = vi * stride; x, y, z = ReadF32LE3(vbs[vb_idx], vo)
+            if R_inv != null:
+                wx = x*R_inv[0] + y*R_inv[3] + z*R_inv[6] + t_inv[0]
+                wy = x*R_inv[1] + y*R_inv[4] + z*R_inv[7] + t_inv[1]
+                wz = x*R_inv[2] + y*R_inv[5] + z*R_inv[8] + t_inv[2]
+                x, y, z = wx, wy, wz
+            positions.extend((x, y, z))
+            if stride &gt;= 24:
+                nx = vbs[vb_idx][vo+12]/127.5 - 1.0; ny = vbs[vb_idx][vo+13]/127.5 - 1.0; nz = vbs[vb_idx][vo+14]/127.5 - 1.0
+                if R_inv != null:
+                    wnx = nx*R_inv[0] + ny*R_inv[3] + nz*R_inv[6]
+                    wny = nx*R_inv[1] + ny*R_inv[4] + nz*R_inv[7]
+                    wnz = nx*R_inv[2] + ny*R_inv[5] + nz*R_inv[8]
+                    nx, ny, nz = wnx, wny, wnz
+                normals.extend(Normalize3(nx, ny, nz))
+            if stride &gt;= 32: uvs.extend(ReadF32LE2(vbs[vb_idx], vo + stride - 8))
+
+        tris = DecodeTriangles(ibs[ib_idx][ioff : ioff + idx_cnt], vcnt, (prim_tp == 6), clockwise_target)
+        if len(tris) &lt; 3: continue
+        xs = positions[0::3]; ys = positions[1::3]; zs = positions[2::3]
+        bbox = (vcnt, len(tris)/3, round(min(xs),3), round(max(xs),3), round(min(ys),3), round(max(ys),3), round(min(zs),3), round(max(zs),3))
+        if bbox not in seen_bboxes:
+            seen_ranges.add((vb_idx, vbase, vcnt, ioff, bone_idx)); seen_bboxes.add(bbox)
+            out.append((positions, normals, uvs, tris))
+    return out</code></pre>
 </body>
 </html>

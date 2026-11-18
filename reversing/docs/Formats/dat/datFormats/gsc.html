@@ -1,43 +1,122 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>.gsc / .nux / .nx2 / .nus (NuScene Compiled Scene Geometry)</title>
+    <title>.gsc / .nux / .nx2 / .nus (NuScene Geometry — LEGO Star Wars)</title>
     <link rel="stylesheet" href="../../../style/main.css">
 </head>
 <body class="doc-page">
     <nav class="breadcrumbs" aria-label="Breadcrumb">
         <a href='../../../index.html#home' target='_parent'>Documentation</a><span>/</span><a href='../../../index.html#Formats-dat' target='_parent'>Formats</a><span>/</span><a href='../../../index.html#Formats-dat' target='_parent'>.dat</a><span>/</span>.gsc
     </nav>
-    <h1>.gsc / .nux / .nx2 / .nus (NuScene Compiled Scene Geometry)</h1>
-<aside class="source-notice"><p><strong>Category:</strong> 3D Graphics & Scene · <strong>Scope:</strong> Universal (All TT Engine Generations 2005–2024; .nux/.nus in LSW1 Xbox, .nx2 in LSW2 Xbox)</p></aside>
+    <h1>.gsc / .nux / .nx2 / .nus (NuScene Geometry — LEGO Star Wars)</h1>
+<aside class="source-notice"><p><strong>Game Scope:</strong> <em>LEGO Star Wars: The Video Game</em> (2005), <em>LSW2</em> (2006), &amp; <em>The Complete Saga</em> (2007) · <strong>Format Variant:</strong> Classic <code>NU20</code> Scene Geometry. For later Next-Gen <code>HSEM</code> variants in other TT Games titles, see the parent LEGO documentation.</p></aside>
 <section class="format-summary">
-    <p class="eyebrow">Format Specification · TT Games Engine</p>
-    <p>Compiled static scene geometry, room meshes, material graphs, portal bounds, and camera splines across Classic Nu2 (.nup/.nux/.nx2) and Next-Gen NXG/DX11 (_nxg.gsc, _dx11.gsc).</p>
+    <p class="eyebrow">Game-Scoped Specification · Classic Nu2 Engine</p>
+    <p>Complete, standalone specification for static level rooms, terrain props, and background scenes in Classic <em>LEGO Star Wars</em> builds (<code>789</code> inspected <code>_PC.GSC</code> files in <em>TCS</em>: <code>780</code> geometry scenes, <code>9</code> empty locator scenes; <code>259</code> <code>.nux</code> + <code>18</code> <code>.nus</code> in <em>LSW1</em> Xbox; <code>448</code>/<code>474</code>/<code>500</code> in <em>LSW2</em>).</p>
     <dl>
-        <dt>File Extension</dt><dd><code>.gsc</code></dd>
-        <dt>Header Signature / Magic</dt><dd><code>NU20 (0x3032554E) / .CC4+HSER+02UN / GSC0</code></dd>
-        <dt>Subsystem</dt><dd>3D Graphics & Scene</dd>
-        <dt>Cross-Game Scope</dt><dd>Universal (All TT Engine Generations 2005–2024; .nux/.nus in LSW1 Xbox, .nx2 in LSW2 Xbox)</dd>
+        <dt>Extensions</dt><dd><code>.gsc</code> (PS2/PS3/X360/PC), <code>.nux</code>/<code>.nus</code> (LSW1 Xbox), <code>.nx2</code> (LSW2 Xbox), <code>.nup</code> (LSW1 PC/GCN)</dd>
+        <dt>Header Magic</dt><dd><code>uint32le nu20_rel</code> + <code>uint16le n_tex</code> -> <code>"NU20"</code> (<code>0x3032554E</code>) at <code>nu20_rel + 4</code></dd>
+        <dt>Subsystem</dt><dd>Static Level Rooms &amp; Props</dd>
     </dl>
 </section>
-<h2>Overview &amp; Engine Evolution</h2>
-<p>The <code>.gsc</code> (Game Scene / NuScene) family is the primary static environment and background geometry container across Traveller's Tales LEGO titles:</p>
-<ul>
-    <li><strong>Era 1 (LSW1 2005):</strong> Stored as <code>.gsc</code> on PS2 (wrapped in <code>RNC\x02</code> compression), <code>.nux</code> / <code>.nus</code> on Original Xbox (raw <code>GSC0</code> + <code>VERS</code> chunks), and <code>.nup</code> on PC/GameCube.</li>
-    <li><strong>Era 2 (LSW2 2006 – Indy 1 2008):</strong> Stored as <code>.gsc</code> on PS2/PC/Xbox 360 and <code>.nx2</code> on Original Xbox. Begins with little-endian <code>NU20</code> or big-endian <code>02UN</code> chunk streams (<code>INFO</code>, <code>NTBL</code>, <code>TST0</code>, <code>MSH0</code>, <code>MTL0</code>, <code>SPEC</code>).</li>
-    <li><strong>Era 3–4 (NXG &amp; DX11, 2008–2019):</strong> Stored with platform suffixes (<code>_nxg.gsc</code>, <code>_wii.gsc</code>, <code>_dx11.gsc</code>). Wrapped in a FourCC resource container (<code>.CC4</code> / <code>4CC.</code> + <code>HSER</code> / <code>RESH</code>) embedding an inner <code>NU20</code> / <code>02UN</code> scene payload and followed by an out-of-band <code>StreamInfo</code> display-list and vertex/index buffer stream.</li>
-</ul>
-<h2>Binary Structure (Era 3–4 NXG / DX11 Container)</h2>
+
+<h2>1. Pre-<code>NU20</code> Buffer Stream &amp; <code>GSNH</code> Scene Graph</h2>
 <div class="table-scroll"><table class="format-counts">
-<thead><tr><th>Offset</th><th>Size</th><th>Type</th><th>Field</th><th>Description</th></tr></thead>
+<thead><tr><th>Section / Field</th><th>Offset / Encoding</th><th>Description</th></tr></thead>
 <tbody>
-<tr><td>0x00</td><td>4</td><td>UInt32</td><td>HeaderSize</td><td>Size of outer resource wrapper before inner <code>NU20</code> stream.</td></tr>
-<tr><td>0x04</td><td>4</td><td>UInt32</td><td>Version</td><td>Container version indicator (typically <code>1</code>).</td></tr>
-<tr><td>0x08</td><td>4</td><td>Char[4]</td><td>Magic</td><td><code>02UN</code> (BE on PS3/X360) or <code>NU20</code> (LE on PC).</td></tr>
-<tr><td>0x0C</td><td>4</td><td>Int32</td><td>Nu20Version</td><td>Engine serialization version (e.g. <code>0x46</code>..<code>0x59</code>).</td></tr>
+<tr><td><code>nu20_rel</code> / <code>n_tex</code></td><td><code>0x00 u32le</code>, <code>0x04 u16le</code></td><td><code>nu_off = nu20_rel + 4</code> locates <code>"NU20"</code>. Preceding inline <code>"DDS "</code> textures are prefixed by 24-byte headers (<code>width_signed</code> at <code>+0x00</code>, <code>dds_size</code> at <code>+0x14</code>; cubemaps increment <code>tex_idx</code> by 6).</td></tr>
+<tr><td><code>VertexBuffers</code></td><td><code>u16le n_vb</code> + <code>[u32le sz, bytes]</code></td><td>Raw static scene vertex pools. <code>n_vb == 0</code> indicates an empty trigger/locator scene.</td></tr>
+<tr><td><code>IndexBuffers</code></td><td><code>u16le n_ib</code> + <code>[u32le sz, u16le[]]</code></td><td>Raw 16-bit little-endian index pools.</td></tr>
+<tr><td><code>GSNH</code> Display Table</td><td><code>hdr_off = gsnh + 280 + i32(gsnh+280)</code></td><td>Self-relative pointers yield <code>cmd_base = hdr_off + 8 + i32(hdr_off+8)</code>, <code>n_groups = i32(hdr_off+16)</code>, <code>p_groups = hdr_off + 20 + i32(hdr_off+20)</code>.</td></tr>
+<tr><td>Group &amp; Command Chain</td><td>12 B groups -> 16 B commands</td><td>Each group <code>g_idx</code> lists <code>cnt</code> command indices into <code>cmd_base</code>; each 16 B command points via <code>c_off + 4 + desc_rel</code> to a 56 B draw descriptor. (Fallback: scan <code>[max(0, gsnh-250000) : gsnh]</code> for <code>opcode == 0x82 and z0 == 0 and z1 == 0</code>.)</td></tr>
+<tr><td>56 B Draw Descriptor</td><td><code>14 * int32le</code> at <code>t_off</code></td><td><code>desc[0]</code> in <code>{4,5}</code> List (<code>tri_cnt*3</code>) or <code>{6}</code> Strip (<code>tri_cnt+2</code>); <code>desc[1]=tri_cnt</code>; <code>desc[2]&amp;0xFF=stride</code> (24..48 B); <code>desc[5]=vbase</code>; <code>desc[6]=vcnt</code>; <code>desc[7]=ioff</code>; <code>desc[8]=ib_idx</code>; <code>desc[9]=vb_idx</code>.</td></tr>
+<tr><td>Vertex Stride Layout</td><td>At <code>(vbase + i) * stride</code></td><td><code>+0x00 float32le[3]</code> pos; <code>+0x0C uint8[3]</code> unsigned normal <code>(b / 127.5 - 1.0)</code> when <code>stride &gt;= 24</code>; <code>+stride - 8 float32le[2]</code> UV0 when <code>stride &gt;= 32</code>. Indices are 0-based relative to <code>vbase</code>, CCW-wound (flip to CW for Godot <code>SurfaceTool</code>).</td></tr>
 </tbody>
 </table></div>
+
+<h2>2. Complete Self-Contained Pseudocode (<em>LEGO Star Wars</em> <code>.GSC</code>)</h2>
+<pre><code>function DecodeTriangles(raw, vcnt, is_strip, clockwise_target):
+    out = []; n = len(raw)
+    if n &lt; 3 or vcnt &lt; 3: return out
+    if is_strip:
+        for s in 0 .. n - 3:
+            a = raw[s]; b = raw[s+1]; c = raw[s+2]
+            if 0 &lt;= a &lt; vcnt and 0 &lt;= b &lt; vcnt and 0 &lt;= c &lt; vcnt and a != b and b != c and a != c:
+                ccw_even = ((s &amp; 1) == 0)
+                emit_abc = (ccw_even and not clockwise_target) or (not ccw_even and clockwise_target)
+                out.extend((a, b, c) if emit_abc else (a, c, b))
+    else:
+        for i in range(0, n - (n % 3), 3):
+            a = raw[i]; b = raw[i+1]; c = raw[i+2]
+            if 0 &lt;= a &lt; vcnt and 0 &lt;= b &lt; vcnt and 0 &lt;= c &lt; vcnt and a != b and b != c and a != c:
+                out.extend((a, c, b) if clockwise_target else (a, b, c))
+    return out
+
+function ParseLswGsc(bytes, clockwise_target=false):
+    if len(bytes) &lt; 8: return []
+    nu_off = ReadU32LE(bytes, 0x00) + 4
+    if nu_off &lt; 8 or nu_off + 8 &gt; len(bytes) or bytes[nu_off : nu_off+4] != "NU20": return []
+    n_tex = ReadU16LE(bytes, 0x04); pos = 0x06; tex_idx = 0
+    while tex_idx &lt; n_tex and pos + 28 &lt;= nu_off:
+        if bytes[pos+24 : pos+28] != "DDS ": break
+        w_signed = ReadI32LE(bytes, pos); dds_size = ReadU32LE(bytes, pos+20)
+        tex_idx += (6 if w_signed &lt; 0 else 1); pos += 24 + dds_size
+
+    n_vb = ReadU16LE(bytes, pos); pos += 2; vbs = []
+    for _ in 0 .. n_vb - 1: sz = ReadU32LE(bytes, pos); pos += 4; vbs.append(bytes[pos : pos+sz]); pos += sz
+    n_ib = ReadU16LE(bytes, pos); pos += 2; ibs = []
+    for _ in 0 .. n_ib - 1: sz = ReadU32LE(bytes, pos); pos += 4; ibs.append(ReadU16LEArray(bytes, pos, sz/2)); pos += sz
+    if len(vbs) == 0 or len(ibs) == 0: return []
+
+    tail = bytes[nu_off : len(bytes)]; gsnh = FindTag(tail, "GSNH")
+    if gsnh &lt; 0 or gsnh + 420 &gt; len(tail): return []
+    hdr_off  = gsnh + 280 + ReadI32LE(tail, gsnh + 280)
+    cmd_base = hdr_off + 8  + ReadI32LE(tail, hdr_off + 8)
+    n_groups = ReadI32LE(tail, hdr_off + 16); p_groups = hdr_off + 20 + ReadI32LE(tail, hdr_off + 20)
+
+    descs = []; seen_cmds = {}
+    for g_idx in 0 .. n_groups - 1:
+        goff = p_groups + g_idx * 12; cnt = ReadI32LE(tail, goff); p_cmds = goff + 8 + ReadI32LE(tail, goff + 8)
+        for k in 0 .. cnt - 1:
+            c_idx = ReadI32LE(tail, p_cmds + k * 4)
+            if c_idx in seen_cmds: continue
+            c_off = cmd_base + c_idx * 16; t_off = c_off + 4 + ReadI32LE(tail, c_off + 4)
+            desc = ReadI32LEArray(tail, t_off, 14)
+            if desc[0] in [4,5,6] and 0 &lt; desc[1] &lt; 200000 and (desc[2] &amp; 0xFF) in [24,28,32,36,40,44,48]:
+                seen_cmds.add(c_idx); descs.append(desc)
+    if len(descs) == 0:
+        for off in range(max(0, gsnh - 250000), gsnh, 4):
+            c0, rel, z0, z1 = ReadI32LEArray(tail, off, 4)
+            if c0 == 0x82 and z0 == 0 and z1 == 0 and 0 &lt; rel &lt; 200000:
+                desc = ReadI32LEArray(tail, off + 4 + rel, 14)
+                if desc[0] in [4,5,6] and 0 &lt; desc[1] &lt; 200000: descs.append(desc)
+
+    out = []; seen_ranges = {}; seen_bboxes = {}
+    for desc in descs:
+        prim_tp = desc[0]; tri_cnt = desc[1]; stride = desc[2] &amp; 0xFF
+        vbase = desc[5]; vcnt = desc[6]; ioff = desc[7]; ib_idx = desc[8]; vb_idx = desc[9]
+        if vcnt &lt; 3 or tri_cnt &lt;= 0 or (vb_idx, vbase, vcnt, ioff) in seen_ranges: continue
+        idx_cnt = (tri_cnt + 2) if prim_tp == 6 else (tri_cnt * 3)
+        if (vbase + vcnt) * stride &gt; len(vbs[vb_idx]) or ioff + idx_cnt &gt; len(ibs[ib_idx]): continue
+
+        positions = []; normals = []; uvs = []
+        for vi in vbase .. vbase + vcnt - 1:
+            vo = vi * stride
+            positions.extend(ReadF32LE3(vbs[vb_idx], vo))
+            if stride &gt;= 24:
+                normals.extend(Normalize3(vbs[vb_idx][vo+12]/127.5-1.0, vbs[vb_idx][vo+13]/127.5-1.0, vbs[vb_idx][vo+14]/127.5-1.0))
+            if stride &gt;= 32:
+                uvs.extend(ReadF32LE2(vbs[vb_idx], vo + stride - 8))
+
+        tris = DecodeTriangles(ibs[ib_idx][ioff : ioff + idx_cnt], vcnt, (prim_tp == 6), clockwise_target)
+        if len(tris) &lt; 3: continue
+        xs = positions[0::3]; ys = positions[1::3]; zs = positions[2::3]
+        bbox = (vcnt, len(tris)/3, round(min(xs),3), round(max(xs),3), round(min(ys),3), round(max(ys),3), round(min(zs),3), round(max(zs),3))
+        if bbox not in seen_bboxes:
+            seen_ranges.add((vb_idx, vbase, vcnt, ioff)); seen_bboxes.add(bbox)
+            out.append((positions, normals, uvs, tris))
+    return out</code></pre>
 </body>
 </html>
