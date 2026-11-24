@@ -30,9 +30,10 @@
 <tr><td><code>VertexBuffers</code></td><td><code>u16le n_vb</code> + <code>[u32le sz, bytes]</code></td><td>Raw static scene vertex pools. <code>n_vb == 0</code> indicates an empty trigger/locator scene.</td></tr>
 <tr><td><code>IndexBuffers</code></td><td><code>u16le n_ib</code> + <code>[u32le sz, u16le[]]</code></td><td>Raw 16-bit little-endian index pools.</td></tr>
 <tr><td><code>GSNH</code> Display Table</td><td><code>hdr_off = gsnh + 280 + i32(gsnh+280)</code></td><td>Self-relative pointers yield <code>cmd_base = hdr_off + 8 + i32(hdr_off+8)</code>, <code>n_groups = i32(hdr_off+16)</code>, <code>p_groups = hdr_off + 20 + i32(hdr_off+20)</code>.</td></tr>
-<tr><td>Group &amp; Command Chain</td><td>12 B groups -> 16 B commands</td><td>Each group <code>g_idx</code> lists <code>cnt</code> command indices into <code>cmd_base</code>; each 16 B command points via <code>c_off + 4 + desc_rel</code> to a 56 B draw descriptor. (Fallback: scan <code>[max(0, gsnh-250000) : gsnh]</code> for <code>opcode == 0x82 and z0 == 0 and z1 == 0</code>.)</td></tr>
-<tr><td>56 B Draw Descriptor</td><td><code>14 * int32le</code> at <code>t_off</code></td><td><code>desc[0]</code> in <code>{4,5}</code> List (<code>tri_cnt*3</code>) or <code>{6}</code> Strip (<code>tri_cnt+2</code>); <code>desc[1]=tri_cnt</code>; <code>desc[2]&amp;0xFF=stride</code> (24..48 B); <code>desc[5]=vbase</code>; <code>desc[6]=vcnt</code>; <code>desc[7]=ioff</code>; <code>desc[8]=ib_idx</code>; <code>desc[9]=vb_idx</code>.</td></tr>
-<tr><td>Vertex Stride Layout</td><td>At <code>(vbase + i) * stride</code></td><td><code>+0x00 float32le[3]</code> pos; <code>+0x0C uint8[3]</code> unsigned normal <code>(b / 127.5 - 1.0)</code> when <code>stride &gt;= 24</code>; <code>+stride - 8 float32le[2]</code> UV0 when <code>stride &gt;= 32</code>. Indices are 0-based relative to <code>vbase</code>, CCW-wound (flip to CW for Godot <code>SurfaceTool</code>).</td></tr>
+<tr><td>Group &amp; Command Chain</td><td>12 B groups -> 16 B commands</td><td>Each group <code>g_idx</code> holds <code>+0x00 int32le cnt</code>, <code>+0x04 int32le mtls_rel</code> (material indices into <code>0x380</code> list), and <code>+0x08 int32le cmds_rel</code> (command indices into <code>cmd_base</code>); each 16 B command points via <code>c_off + 4 + desc_rel</code> to a 56 B draw descriptor. (Fallback: scan <code>[max(0, gsnh-250000) : gsnh]</code> for <code>opcode == 0x82 and z0 == 0 and z1 == 0</code>.)</td></tr>
+<tr><td><code>0x380</code> Material Records</td><td>Scan <code>cmd_base</code> until <code>0x8E</code></td><td>Every 16 B command with <code>opcode == 0x380</code> resolves a material struct at <code>mo = c_off + 4 + c1</code> holding <code>+0x54 float32le[3] rgb</code> and <code>+0x74 int16le tid</code> (<code>dds_by_slot</code> index; <code>-1</code> = untextured). Render diffuse textures opaque (alpha may encode specularity).</td></tr>
+<tr><td>56 B Draw Descriptor</td><td><code>14 * int32le</code> at <code>t_off</code></td><td><code>desc[0]</code> in <code>{4,5}</code> List (<code>tri_cnt*3</code>) or <code>{6}</code> Strip (<code>tri_cnt+2</code>); <code>desc[1]=tri_cnt</code>; <code>desc[2]&amp;0xFF=stride</code> (24..48 B; <code>desc[2] &gt; 0 or stride &gt;= 40</code> indicates 8 B trailing skinning data); <code>desc[5]=vbase</code>; <code>desc[6]=vcnt</code>; <code>desc[7]=ioff</code>; <code>desc[8]=ib_idx</code>; <code>desc[9]=vb_idx</code>.</td></tr>
+<tr><td>Vertex Stride Layout</td><td>At <code>(vbase + i) * stride</code></td><td><code>+0x00 float32le[3]</code> pos; <code>+0x0C uint8[3]</code> unsigned normal <code>(b / 127.5 - 1.0)</code> when <code>stride &gt;= 24</code>. Let <code>is_skinned_fmt = (desc[2] &gt; 0) or (stride &gt;= 40)</code>: when <code>stride &gt;= 28</code>, top-left UV0 sits at <code>uv_off = (stride - 16) if is_skinned_fmt else (stride - 8)</code>, and 4-byte vertex color (<code>R,G,B,aux</code>; <code>0x7F = 1.0</code>, all-zero -&gt; white) sits at <code>col_off = uv_off - 4</code> (or <code>stride - 4</code> when <code>stride == 24</code>). Surface color = <code>MaterialColor * VertexColor * DiffuseTexture</code>. Indices are 0-based relative to <code>vbase</code>, CCW-wound (flip to CW for Godot <code>SurfaceTool</code>).</td></tr>
 </tbody>
 </table></div>
 
@@ -58,10 +59,11 @@ function ParseLswGsc(bytes, clockwise_target=false):
     if len(bytes) &lt; 8: return []
     nu_off = ReadU32LE(bytes, 0x00) + 4
     if nu_off &lt; 8 or nu_off + 8 &gt; len(bytes) or bytes[nu_off : nu_off+4] != "NU20": return []
-    n_tex = ReadU16LE(bytes, 0x04); pos = 0x06; tex_idx = 0
+    n_tex = ReadU16LE(bytes, 0x04); pos = 0x06; tex_idx = 0; dds_by_slot = {}
     while tex_idx &lt; n_tex and pos + 28 &lt;= nu_off:
         if bytes[pos+24 : pos+28] != "DDS ": break
         w_signed = ReadI32LE(bytes, pos); dds_size = ReadU32LE(bytes, pos+20)
+        if w_signed &gt; 0 and dds_size &gt; 128: dds_by_slot[tex_idx] = bytes[pos+24 : pos+24+dds_size]
         tex_idx += (6 if w_signed &lt; 0 else 1); pos += 24 + dds_size
 
     n_vb = ReadU16LE(bytes, pos); pos += 2; vbs = []
@@ -75,40 +77,48 @@ function ParseLswGsc(bytes, clockwise_target=false):
     hdr_off  = gsnh + 280 + ReadI32LE(tail, gsnh + 280)
     cmd_base = hdr_off + 8  + ReadI32LE(tail, hdr_off + 8)
     n_groups = ReadI32LE(tail, hdr_off + 16); p_groups = hdr_off + 20 + ReadI32LE(tail, hdr_off + 20)
+    nu_mtls = ReadNu380Materials(tail, cmd_base)   // scan cmd_base until 0x8E; 0x380 -> (+0x54 f32le[3], +0x74 i16le)
 
     descs = []; seen_cmds = {}
     for g_idx in 0 .. n_groups - 1:
-        goff = p_groups + g_idx * 12; cnt = ReadI32LE(tail, goff); p_cmds = goff + 8 + ReadI32LE(tail, goff + 8)
+        goff = p_groups + g_idx * 12; cnt = ReadI32LE(tail, goff)
+        p_mtls = goff + 4 + ReadI32LE(tail, goff + 4); p_cmds = goff + 8 + ReadI32LE(tail, goff + 8)
         for k in 0 .. cnt - 1:
-            c_idx = ReadI32LE(tail, p_cmds + k * 4)
+            m_idx = ReadI32LE(tail, p_mtls + k * 4); c_idx = ReadI32LE(tail, p_cmds + k * 4)
             if c_idx in seen_cmds: continue
             c_off = cmd_base + c_idx * 16; t_off = c_off + 4 + ReadI32LE(tail, c_off + 4)
             desc = ReadI32LEArray(tail, t_off, 14)
             if desc[0] in [4,5,6] and 0 &lt; desc[1] &lt; 200000 and (desc[2] &amp; 0xFF) in [24,28,32,36,40,44,48]:
-                seen_cmds.add(c_idx); descs.append(desc)
+                seen_cmds.add(c_idx); descs.append((desc, m_idx))
     if len(descs) == 0:
         for off in range(max(0, gsnh - 250000), gsnh, 4):
             c0, rel, z0, z1 = ReadI32LEArray(tail, off, 4)
             if c0 == 0x82 and z0 == 0 and z1 == 0 and 0 &lt; rel &lt; 200000:
                 desc = ReadI32LEArray(tail, off + 4 + rel, 14)
-                if desc[0] in [4,5,6] and 0 &lt; desc[1] &lt; 200000: descs.append(desc)
+                if desc[0] in [4,5,6] and 0 &lt; desc[1] &lt; 200000: descs.append((desc, -1))
 
     out = []; seen_ranges = {}; seen_bboxes = {}
-    for desc in descs:
+    for (desc, m_idx) in descs:
         prim_tp = desc[0]; tri_cnt = desc[1]; stride = desc[2] &amp; 0xFF
         vbase = desc[5]; vcnt = desc[6]; ioff = desc[7]; ib_idx = desc[8]; vb_idx = desc[9]
         if vcnt &lt; 3 or tri_cnt &lt;= 0 or (vb_idx, vbase, vcnt, ioff) in seen_ranges: continue
         idx_cnt = (tri_cnt + 2) if prim_tp == 6 else (tri_cnt * 3)
         if (vbase + vcnt) * stride &gt; len(vbs[vb_idx]) or ioff + idx_cnt &gt; len(ibs[ib_idx]): continue
 
-        positions = []; normals = []; uvs = []
+        is_skinned_fmt = (desc[2] &gt; 0) or (stride &gt;= 40); has_uv = (stride &gt;= 28)
+        uv_off = (stride - 16) if is_skinned_fmt else (stride - 8)
+        col_off = (uv_off - 4) if has_uv else (stride - 4)
+        positions = []; normals = []; colors = []; uvs = []
         for vi in vbase .. vbase + vcnt - 1:
             vo = vi * stride
             positions.extend(ReadF32LE3(vbs[vb_idx], vo))
             if stride &gt;= 24:
                 normals.extend(Normalize3(vbs[vb_idx][vo+12]/127.5-1.0, vbs[vb_idx][vo+13]/127.5-1.0, vbs[vb_idx][vo+14]/127.5-1.0))
-            if stride &gt;= 32:
-                uvs.extend(ReadF32LE2(vbs[vb_idx], vo + stride - 8))
+            if 16 &lt;= col_off and col_off + 4 &lt;= stride:
+                b0, b1, b2 = vbs[vb_idx][vo+col_off], vbs[vb_idx][vo+col_off+1], vbs[vb_idx][vo+col_off+2]
+                colors.append((1,1,1) if (b0==0 and b1==0 and b2==0) else (min(1.0,b0/127.0), min(1.0,b1/127.0), min(1.0,b2/127.0)))
+            if has_uv:
+                uvs.extend(ReadF32LE2(vbs[vb_idx], vo + uv_off))
 
         tris = DecodeTriangles(ibs[ib_idx][ioff : ioff + idx_cnt], vcnt, (prim_tp == 6), clockwise_target)
         if len(tris) &lt; 3: continue
@@ -116,7 +126,8 @@ function ParseLswGsc(bytes, clockwise_target=false):
         bbox = (vcnt, len(tris)/3, round(min(xs),3), round(max(xs),3), round(min(ys),3), round(max(ys),3), round(min(zs),3), round(max(zs),3))
         if bbox not in seen_bboxes:
             seen_ranges.add((vb_idx, vbase, vcnt, ioff)); seen_bboxes.add(bbox)
-            out.append((positions, normals, uvs, tris))
+            mtl_col, tid = nu_mtls[m_idx] if (0 &lt;= m_idx &lt; len(nu_mtls)) else ((1,1,1), -1)
+            out.append((positions, normals, colors, uvs, tris, mtl_col, dds_by_slot.get(tid, null)))
     return out</code></pre>
 </body>
 </html>
